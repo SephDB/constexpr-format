@@ -65,9 +65,9 @@ In the first lambda in our example above, format doesn't need to be captured bec
 pretty straightforward in comparison to the TMP trickery that would be necessary to achieve this using variadic templates.
 
 ### util::static_string - util::string_view
-These two types form the core of the string processing in this library. 
-string_view provides constexpr views over string literals(or compile-time strings), primarily used in parsing the format string.
-static_string<N> is a light wrapper around std::array<char,N> used for building up the result of format.
+These two types form the core of the string processing in this library.
+- string_view provides constexpr views over string literals(or compile-time strings), primarily used in parsing the format string.
+- static_string<N> is a light wrapper around std::array<char,N> used for building up the result of format.
 
 ### Format specifiers
 Format specifiers are added by adding a declaration of a function called to_type in the constexpr_format::format_to_type namespace, taking a template character wrapper type and returning a template instantiation of format_to_type::FormatType.
