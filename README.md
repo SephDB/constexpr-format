@@ -22,12 +22,14 @@ static_assert(string == "Hello %USER%, this is number 1 and 5");
 constexpr_format::string_udl is a namespace with one user-defined literal: _sv, which returns an internal constexpr implementation of string_view.
 The arguments to constexpr_format::format are constexpr lambda's, which, using this constexpr lambda idiom, allows us to pass arbitrary literal values to constexpr functions as constexpr.
 
+format returns a static_string(see below), from which a null-terminated char array can be retrieved using static_string::getNullTerminatedString().
+
 ## Features
 
 ### Supported format specifiers
  - %d, accepts any type convertible to int
  - %%, prints out a %
- - %s, 
+ - %s, prints out a util::string_view
 
 ### (Relatively) readable compilation errors for incorrect arguments
 

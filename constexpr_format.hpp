@@ -24,6 +24,10 @@ namespace constexpr_format {
             
             constexpr auto end() {return string.end();}
             constexpr auto end() const {return string.end();}
+
+            constexpr std::array<char,N+1> getNullTerminatedString() {
+                return (*this + static_string<1>{{'\0'}}).string;
+            }
         };
 
         template<std::size_t N, std::size_t M>
@@ -343,7 +347,7 @@ namespace constexpr_format {
                     return init+f.template apply([=](auto... fs) {
                         return util::constexpr_apply([=](auto... prefixes) {
                             return ((getString(fs) + util::view_to_static(prefixes)) + ...);
-                        },[]{return intermediate_strings;}) + util::static_string<1>{{'\0'}};
+                        },[]{return intermediate_strings;});
                     });
                 } else {
                     //Error case still gives reasonable type to reduce compilation error output
