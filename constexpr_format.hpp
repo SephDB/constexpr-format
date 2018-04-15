@@ -150,36 +150,29 @@ namespace constexpr_format {
 
     template<>
     struct Format<int> {
-        constexpr static std::size_t length(int num) {
-            if (num == 0) return 1;
-            int ret = num < 0 ? 1 : 0;
-            while(num) {
-                ret++;
-                num /= 10;
+        template<int N>
+        constexpr static auto get_string_rec() {
+            constexpr auto current = util::static_string<1>{{'0'+std::abs(N%10)}};
+            if constexpr (N/10 == 0) {
+                return current;
+            } else {
+                return get_string_rec<N/10>()+current;
             }
-            return ret;
-        };
+        }
         template<typename IntF>
         constexpr static auto get_string(IntF f) {
-            constexpr auto N = length(f());
-            int num = f();
-            util::static_string<N> ret{};
-            std::array<char,N>& r = ret.string;
-            if (num == 0) {
-                r[0] = '0';
-                return ret;
+            constexpr int N = f();
+            if constexpr (N == 0) {
+                return util::static_string<1>{{'0'}};
+            } else {
+                constexpr auto abs_num = get_string_rec<N>();
+                if constexpr (N < 0) {
+                    return util::static_string<1>{{'-'}}+abs_num;
+                } else {
+                    return abs_num;
+                }
             }
-            auto cur_char = N-1;
-            if (num < 0) {
-                r[0] = '-';
-            }
-            while(num) {
-                r[cur_char] = '0'+std::abs(num%10);
-                cur_char--;
-                num /= 10;
-            }
-            return ret;
-        };
+        }
     };
 
     template<>
