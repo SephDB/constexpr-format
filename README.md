@@ -93,10 +93,9 @@ auto to_type(CharV<'%'>) -> FormatType<LiteralPercent,false>;
 
 With T being the type expected by the formatter, and takesParam a boolean saying whether this specifier consumes an argument given to format(eg: "%%" translates to "%").
 
-Each formatter is a specialization of the constexpr_format::Format template. If it doesn't take a parameter, it has one constexpr static non-templated method: get_string, taking no parameters and returning a value convertible to a util::static_string.
-If it does take a parameter, it has two methods:
- - constexpr static std::size_t length(T), taking a value of the formatted type and returns the length of the string it will generate
- - template<std::size_t N> constexpr static util::static_string<N> get_string(T), which builds the string
+Each formatter is a specialization of the constexpr_format::Format template, with one method: get_string, returning a util::static_string.
+
+If the formatter takes a parameter, get_string takes said parameter as a constexpr expression through the constexpr lambda idiom. If it doesn't, get_string has no parameters.
 
 
 ## Compiler support

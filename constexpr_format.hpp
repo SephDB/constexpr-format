@@ -159,8 +159,10 @@ namespace constexpr_format {
             }
             return ret;
         };
-        template<std::size_t N>
-        constexpr static auto get_string(int num) {
+        template<typename IntF>
+        constexpr static auto get_string(IntF f) {
+            constexpr auto N = length(f());
+            int num = f();
             util::static_string<N> ret{};
             std::array<char,N>& r = ret.string;
             if (num == 0) {
@@ -182,12 +184,10 @@ namespace constexpr_format {
 
     template<>
     struct Format<util::string_view> {
-        constexpr static std::size_t length(util::string_view s) {
-            return s.size();
-        };
-        template<std::size_t N>
-        constexpr static auto get_string(util::string_view s) {
-            return util::view_to_static<N>(s);
+        template<typename StringF>
+        constexpr static auto get_string(StringF f) {
+            constexpr auto s = f();
+            return util::view_to_static<s.size()>(s);
         };
     };
 
@@ -340,8 +340,7 @@ namespace constexpr_format {
                             return Format<type>::get_string();
                         } else {
                             constexpr auto val = std::get<format.num>(args);
-                            constexpr auto length = Format<type>::length(val);
-                            return Format<type>::template get_string<length>(val);
+                            return Format<type>::template get_string([]{return val;});
                         }
                     };
                     return init+f.template apply([=](auto... fs) {
