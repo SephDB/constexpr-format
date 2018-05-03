@@ -1,5 +1,6 @@
 #include <array>
 #include <tuple>
+#include <algorithm>
 
 namespace constexpr_format {
 
@@ -16,12 +17,12 @@ namespace constexpr_format {
 
             constexpr decltype(auto) data() {return string.data();}
             constexpr decltype(auto) data() const {return string.data();}
-            
+
             constexpr auto size() const {return N;}
-            
+
             constexpr auto begin() {return string.begin();}
             constexpr auto begin() const {return string.begin();}
-            
+
             constexpr auto end() {return string.end();}
             constexpr auto end() const {return string.end();}
 
@@ -135,16 +136,18 @@ namespace constexpr_format {
 
     }
 
-    //Tag type for %% format specifier
-    struct LiteralPercent;
+    template<char...>
+    struct Literal;
+
+    struct Any;
 
     template<typename T>
     struct Format;
 
-    template<>
-    struct Format<LiteralPercent> {
+    template<char... Cs>
+    struct Format<Literal<Cs...>> {
         constexpr static auto get_string() {
-            return util::static_string<1>{{'%'}};
+            return util::static_string<sizeof...(Cs)>{{Cs...}};
         }
     };
 
@@ -184,6 +187,14 @@ namespace constexpr_format {
         };
     };
 
+    template<>
+    struct Format<Any> {
+        template<typename ArgF>
+        constexpr static auto get_string(ArgF f) {
+            return Format<std::decay_t<decltype(f())>>::get_string(f);
+        }
+    };
+
     namespace format_to_type {
         template<typename T, bool takesParam = true>
         struct FormatType {
@@ -195,11 +206,21 @@ namespace constexpr_format {
         struct CharV {};
 
         auto to_type(CharV<'d'>) -> FormatType<int>;
-        auto to_type(CharV<'%'>) -> FormatType<LiteralPercent,false>;
+        auto to_type(CharV<'%'>) -> FormatType<Literal<'%'>,false>;
         auto to_type(CharV<'s'>) -> FormatType<util::string_view>;
     }
 
     namespace format_parser {
+
+        template<char... Cs>
+        struct ParsingMode {
+            constexpr static int find_first(util::string_view s) {
+                return std::min({s.find(Cs)...});
+            };
+        };
+
+        using PythonFmt = ParsingMode<'{','}'>;
+        using PrintfFmt = ParsingMode<'%'>;
 
         //To be filled in later
         struct FormatOptions {};
@@ -210,6 +231,34 @@ namespace constexpr_format {
             constexpr static int num = ParamNum;
         };
 
+        template<typename FmtSpec>
+        struct Spec {
+            using spec = FmtSpec;
+            FormatOptions opts;
+            util::string_view suffix;
+            int next_index;
+        };
+
+
+        template<int current, typename StringF>
+        constexpr auto parse_spec(StringF fs, PythonFmt) {
+            //TODO
+        }
+
+        template<int currentParam, typename StringF>
+        constexpr auto parse_spec(StringF fs, PrintfFmt) {
+            constexpr auto s = fs();
+
+            using namespace format_to_type;
+            using type = decltype(to_type(CharV<s[0]>{}));
+            constexpr bool incr_index = type::hasParam;
+            using FormatSpecT = FormatSpec<typename type::type, incr_index?currentParam:-1>;
+
+            constexpr auto next_index = incr_index?currentParam+1:currentParam;
+
+            return Spec<FormatSpecT>{{},s.remove_prefix(1),next_index};
+        }
+
         template<typename... FormatSpecs>
         struct FormatString {
             std::array<util::string_view,sizeof...(FormatSpecs)+1> strings;
@@ -219,7 +268,6 @@ namespace constexpr_format {
                 return f(FormatSpecs{}...);
             }
         };
-
 
         namespace detail {
             template<typename FSpec, typename FResult>
@@ -232,25 +280,26 @@ namespace constexpr_format {
 
             template<typename FSpec, typename FResult>
             using FormatResult_t = typename getFResult<FSpec,FResult>::type;
+
         }
 
-        template<int currentParam,typename StringViewF>
+        template<int currentParam,typename Mode,typename StringViewF>
         constexpr auto parse_format_impl(StringViewF format) {
             constexpr util::string_view f = format();
-            constexpr auto format_index = f.find('%');
+            constexpr auto format_index = Mode::find_first(f);
             if constexpr (f.size() == format_index) {
                 return FormatString<>{{f},{}};
             } else {
                 constexpr auto prefix = f.prefix(format_index);
-                constexpr auto suffix = f.remove_prefix(format_index+2);
-                
-                using namespace format_to_type;
-                using ftype = decltype(to_type(CharV<f[format_index+1]>{}));
-                constexpr bool incr_index = ftype::hasParam;
-                using FormatSpecT = FormatSpec<typename ftype::type,incr_index?currentParam:-1>;
 
-                constexpr auto next_index = incr_index?currentParam+1:currentParam;
-                constexpr auto result = parse_format_impl<next_index>([]{return suffix;});
+                constexpr auto spec_suffix = f.remove_prefix(format_index+1);
+                constexpr auto spec = parse_spec<currentParam>([]{return spec_suffix;},Mode{});
+
+                constexpr auto suffix = spec.suffix;
+
+                using FormatSpecT = typename decltype(spec)::spec;
+
+                constexpr auto result = parse_format_impl<spec.next_index,Mode>([]{return suffix;});
 
                 return detail::FormatResult_t<FormatSpecT,std::remove_cv_t<decltype(result)>>{
                     util::prepend(prefix,result.strings),
@@ -261,7 +310,7 @@ namespace constexpr_format {
 
         template<typename StringViewF>
         constexpr auto parse_format(StringViewF format) {
-            return parse_format_impl<0>(format);
+            return parse_format_impl<0,PrintfFmt>(format);
         }
 
     }
@@ -269,24 +318,24 @@ namespace constexpr_format {
     namespace format_string {
 
         namespace detail {
-            
+
             template<typename T>
             struct is_format {
                 static constexpr bool value = false;
             };
-            
+
             template<typename... T>
             struct is_format<format_parser::FormatString<T...>> {
                 static constexpr bool value = true;
             };
-            
+
             template<typename FormatSpec, typename Tup>
             constexpr bool check_format_conversion(FormatSpec,Tup t) {
                 if constexpr(FormatSpec::num != -1) {
                     using T = typename FormatSpec::type;
                     using U = decltype(std::get<FormatSpec::num>(t));
-                    static_assert(std::is_convertible_v<U,T>, "Mismatched format types");
-                    return std::is_convertible_v<U,T>;
+                    static_assert(std::is_convertible_v<U,T> or std::is_same_v<T,Any>, "Mismatched format types");
+                    return std::is_convertible_v<U,T> or std::is_same_v<T,Any>;
                 } else {
                     return true;
                 }
@@ -328,7 +377,7 @@ namespace constexpr_format {
                     //Zip results of formatting with strings in-between
                     constexpr auto getString = [](auto format) constexpr {
                         using type = typename decltype(format)::type;
-                        //If the format doesn't consume a parameter, it has a 
+                        //If the format doesn't consume a parameter, it has a
                         if constexpr(decltype(format)::num == -1) {
                             return Format<type>::get_string();
                         } else {
