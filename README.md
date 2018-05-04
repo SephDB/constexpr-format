@@ -72,22 +72,15 @@ These two types form the core of the string processing in this library.
 - static_string<N> is a light wrapper around std::array<char,N> used for building up the result of format.
 
 ### Format specifiers
-Format specifiers are added by adding a declaration of a function called to_type in the constexpr_format::format_to_type namespace, taking a template character wrapper type and returning a template instantiation of format_to_type::FormatType.
+Format specifiers are added by adding a declaration of a function called to_type in the constexpr_format::format_to_type namespace, taking a template character wrapper type and returning the type an instance of Format should accept for it.
 The function is only ever used in a decltype context, so no implementation is necessary.
 ```c++
 namespace constexpr_format::format_to_type {
-template<typename T, bool takesParam = true>
-struct FormatType {
-    using type = T;
-    constexpr static bool hasParam = takesParam;
-};
+    template<char C>
+    struct CharV {};
 
-template<char C>
-struct CharV {};
-
-auto to_type(CharV<'d'>) -> FormatType<int>;
-auto to_type(CharV<'s'>) -> FormatType<util::string_view>;
-auto to_type(CharV<'%'>) -> FormatType<LiteralPercent,false>;
+    auto to_type(CharV<'d'>) -> int;
+    auto to_type(CharV<'s'>) -> util::string_view;
 }
 ```
 

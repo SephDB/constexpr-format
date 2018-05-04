@@ -196,18 +196,11 @@ namespace constexpr_format {
     };
 
     namespace format_to_type {
-        template<typename T, bool takesParam = true>
-        struct FormatType {
-            using type = T;
-            constexpr static bool hasParam = takesParam;
-        };
-
         template<char C>
         struct CharV {};
 
-        auto to_type(CharV<'d'>) -> FormatType<int>;
-        auto to_type(CharV<'%'>) -> FormatType<Literal<'%'>,false>;
-        auto to_type(CharV<'s'>) -> FormatType<util::string_view>;
+        auto to_type(CharV<'d'>) -> int;
+        auto to_type(CharV<'s'>) -> util::string_view;
     }
 
     namespace format_parser {
@@ -241,22 +234,29 @@ namespace constexpr_format {
 
 
         template<int current, typename StringF>
-        constexpr auto parse_spec(StringF fs, PythonFmt) {
+        constexpr auto parse_spec_dispatch(StringF fs, PythonFmt) {
             //TODO
         }
 
         template<int currentParam, typename StringF>
-        constexpr auto parse_spec(StringF fs, PrintfFmt) {
+        constexpr auto parse_spec_dispatch(StringF fs, PrintfFmt) {
             constexpr auto s = fs();
 
             using namespace format_to_type;
-            using type = decltype(to_type(CharV<s[0]>{}));
-            constexpr bool incr_index = type::hasParam;
-            using FormatSpecT = FormatSpec<typename type::type, incr_index?currentParam:-1>;
+            using FormatSpecT = FormatSpec<decltype(to_type(CharV<s[1]>{})), currentParam>;
 
-            constexpr auto next_index = incr_index?currentParam+1:currentParam;
+            return Spec<FormatSpecT>{{},s.remove_prefix(2),currentParam+1};
+        }
 
-            return Spec<FormatSpecT>{{},s.remove_prefix(1),next_index};
+        template<int currentParam, typename StringF, typename Mode>
+        constexpr auto parse_spec(StringF fs, Mode m) {
+            if constexpr (fs()[0] == fs()[1]) {
+                //Repeated special character, insert literal
+                using FormatSpecT = FormatSpec<Literal<fs()[0]>,-1>;
+                return Spec<FormatSpecT>{{},fs().remove_prefix(2),currentParam};
+            } else {
+                return parse_spec_dispatch<currentParam>(fs,m);
+            }
         }
 
         template<typename... FormatSpecs>
@@ -292,7 +292,7 @@ namespace constexpr_format {
             } else {
                 constexpr auto prefix = f.prefix(format_index);
 
-                constexpr auto spec_suffix = f.remove_prefix(format_index+1);
+                constexpr auto spec_suffix = f.remove_prefix(format_index);
                 constexpr auto spec = parse_spec<currentParam>([]{return spec_suffix;},Mode{});
 
                 constexpr auto suffix = spec.suffix;
