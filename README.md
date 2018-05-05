@@ -27,7 +27,7 @@ format returns a static_string(see below), from which a null-terminated char arr
 ## Features
 
 ### Supported format specifiers
- - %d, accepts any type convertible to int
+ - %d, accepts any integral type
  - %%, prints out a %
  - %s, prints out a util::string_view
 
@@ -72,19 +72,18 @@ These two types form the core of the string processing in this library.
 - static_string<N> is a light wrapper around std::array<char,N> used for building up the result of format.
 
 ### Format specifiers
-Format specifiers are added by adding a declaration of a function called to_type in the constexpr_format::format_to_type namespace, taking a template character wrapper type and returning the type an instance of Format should accept for it.
+Format specifiers are added by adding a declaration of a function called to_type in the constexpr_format::format_to_type namespace, taking a template character wrapper type and returning a type that checks compatibility of an argument's type.
 The function is only ever used in a decltype context, so no implementation is necessary.
 ```c++
 namespace constexpr_format::format_to_type {
-    template<char C>
-    struct CharV {};
-
-    auto to_type(CharV<'d'>) -> int;
-    auto to_type(CharV<'s'>) -> util::string_view;
+    auto to_type(CharV<'d'>) -> TypeCheck<std::is_integral>;
+    auto to_type(CharV<'s'>) -> Id<util::string_view>;
 }
 ```
-
-With T being the type expected by the formatter, and takesParam a boolean saying whether this specifier consumes an argument given to format(eg: "%%" translates to "%").
+The available type checkers are:
+- Id: uses std::is_same
+- TypeCheck: takes a single-argument type trait
+- Any: always returns true for any type
 
 Each formatter is a specialization of the constexpr_format::Format template, with one method: get_string, returning a util::static_string.
 

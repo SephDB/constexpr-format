@@ -139,9 +139,7 @@ namespace constexpr_format {
     template<char...>
     struct Literal;
 
-    struct Any;
-
-    template<typename T>
+    template<typename T, typename SFINAE_Check=void>
     struct Format;
 
     template<char... Cs>
@@ -151,9 +149,9 @@ namespace constexpr_format {
         }
     };
 
-    template<>
-    struct Format<int> {
-        template<int N>
+    template<typename T>
+    struct Format<T,std::enable_if_t<std::is_integral_v<T>>> {
+        template<T N>
         constexpr static auto get_string_rec() {
             constexpr auto current = util::static_string<1>{{'0'+std::abs(N%10)}};
             if constexpr (N/10 == 0) {
@@ -164,7 +162,7 @@ namespace constexpr_format {
         }
         template<typename IntF>
         constexpr static auto get_string(IntF f) {
-            constexpr int N = f();
+            constexpr T N = f();
             if constexpr (N == 0) {
                 return util::static_string<1>{{'0'}};
             } else {
@@ -187,20 +185,37 @@ namespace constexpr_format {
         };
     };
 
-    template<>
-    struct Format<Any> {
-        template<typename ArgF>
-        constexpr static auto get_string(ArgF f) {
-            return Format<std::decay_t<decltype(f())>>::get_string(f);
-        }
-    };
+    namespace format_to_typecheck {
+        template<typename T>
+        struct Id {
+            template<typename U>
+            static constexpr bool check() {
+                constexpr bool val = std::is_same_v<T,U>;
+                static_assert(val,"Incompatible types");
+                return val;
+            }
+        };
+        template<template<typename> class Check>
+        struct TypeCheck {
+            template<typename U>
+            static constexpr bool check() {
+                constexpr bool val = Check<U>::value;
+                static_assert(val,"Incompatible type");
+                return val;
+            };
+        };
+        struct Any {
+            template<typename U>
+            static constexpr bool check() {
+                return true;
+            }
+        };
 
-    namespace format_to_type {
         template<char C>
         struct CharV {};
 
-        auto to_type(CharV<'d'>) -> int;
-        auto to_type(CharV<'s'>) -> util::string_view;
+        auto to_type(CharV<'d'>) -> TypeCheck<std::is_integral>;
+        auto to_type(CharV<'s'>) -> Id<util::string_view>;
     }
 
     namespace format_parser {
@@ -242,7 +257,7 @@ namespace constexpr_format {
         constexpr auto parse_spec_dispatch(StringF fs, PrintfFmt) {
             constexpr auto s = fs();
 
-            using namespace format_to_type;
+            using namespace format_to_typecheck;
             using FormatSpecT = FormatSpec<decltype(to_type(CharV<s[1]>{})), currentParam>;
 
             return Spec<FormatSpecT>{{},s.remove_prefix(2),currentParam+1};
@@ -333,9 +348,10 @@ namespace constexpr_format {
             constexpr bool check_format_conversion(FormatSpec,Tup t) {
                 if constexpr(FormatSpec::num != -1) {
                     using T = typename FormatSpec::type;
-                    using U = decltype(std::get<FormatSpec::num>(t));
-                    static_assert(std::is_convertible_v<U,T> or std::is_same_v<T,Any>, "Mismatched format types");
-                    return std::is_convertible_v<U,T> or std::is_same_v<T,Any>;
+                    using U = std::decay_t<decltype(std::get<FormatSpec::num>(t))>;
+                    constexpr bool check_result = T::template check<U>();
+                    static_assert(check_result, "Mismatched format types");
+                    return check_result;
                 } else {
                     return true;
                 }
@@ -344,7 +360,7 @@ namespace constexpr_format {
             template<typename F, typename Tup>
             constexpr bool check_format(F,Tup t) {
                 constexpr auto num_args = F::template apply([](auto... fs) {
-                    return ((fs.num != -1) + ...);
+                    return ((fs.num != -1) + ... + 0);
                 });
                 constexpr auto tuple_size = std::tuple_size_v<Tup>;
                 static_assert(tuple_size <= num_args, "Too many arguments for format");
@@ -370,24 +386,24 @@ namespace constexpr_format {
                     constexpr auto init = util::view_to_static([]{return prefix;});
 
                     constexpr auto intermediate_strings = std::apply([](auto first, auto... xs) {
-                        return std::array{xs...};
+                        return std::array<util::string_view,sizeof...(xs)>{xs...};
                     },f.strings);
                     constexpr auto options = f.options;
 
                     //Zip results of formatting with strings in-between
                     constexpr auto getString = [](auto format) constexpr {
-                        using type = typename decltype(format)::type;
-                        //If the format doesn't consume a parameter, it has a
+                        //If the format doesn't consume a parameter, it has a num of -1
                         if constexpr(decltype(format)::num == -1) {
+                            using type = typename decltype(format)::type;
                             return Format<type>::get_string();
                         } else {
                             constexpr auto val = std::get<format.num>(args);
-                            return Format<type>::template get_string([]{return val;});
+                            return Format<std::decay_t<decltype(val)>>::template get_string([]{return val;});
                         }
                     };
                     return init+f.template apply([=](auto... fs) {
                         return util::constexpr_apply([=](auto... prefixes) {
-                            return ((getString(fs) + util::view_to_static(prefixes)) + ...);
+                            return ((getString(fs) + util::view_to_static(prefixes)) + ... + util::static_string<0>{});
                         },[]{return intermediate_strings;});
                     });
                 } else {
