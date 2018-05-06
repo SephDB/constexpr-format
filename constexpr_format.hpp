@@ -230,8 +230,26 @@ namespace constexpr_format {
         using PythonFmt = ParsingMode<'{','}'>;
         using PrintfFmt = ParsingMode<'%'>;
 
-        //To be filled in later
-        struct FormatOptions {};
+        //See https://www.gnu.org/software/libc/manual/html_node/Conversion-Specifier-Options.html#Conversion-Specifier-Options
+        struct FormatOptions {
+            int precision = -1;
+            //Padding modifiers
+            int width = 0;                  //minimum field width
+            char pad = ' ';                 //0
+            bool left = false;              //-, left-align
+            //Type flags, mutually exclusive
+            bool is_char = false;           //hh
+            bool is_short = false;          //h
+            bool is_long = false;           //l
+            bool is_long_long = false;      //L,ll,q
+            //Other modifiers
+            bool alt = false;               //#
+            bool space = false;             //' ', insert space for positive numbers instead of sign
+            bool showsign = false;          //+, always show sign for numeric output
+            bool group = false;             //', group digits
+
+            char spec;                      //conversion specifier char
+        };
 
         template<typename T, int ParamNum>
         struct FormatSpec {
@@ -242,11 +260,11 @@ namespace constexpr_format {
         template<typename FmtSpec>
         struct Spec {
             using spec = FmtSpec;
+
             FormatOptions opts;
             util::string_view suffix;
             int next_index;
         };
-
 
         template<int current, typename StringF>
         constexpr auto parse_spec_dispatch(StringF fs, PythonFmt) {
@@ -260,7 +278,7 @@ namespace constexpr_format {
             using namespace format_to_typecheck;
             using FormatSpecT = FormatSpec<decltype(to_type(CharV<s[1]>{})), currentParam>;
 
-            return Spec<FormatSpecT>{{},s.remove_prefix(2),currentParam+1};
+            return Spec<FormatSpecT>{{.spec=s[1]},s.remove_prefix(2),currentParam+1};
         }
 
         template<int currentParam, typename StringF, typename Mode>
